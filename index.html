@@ -1143,7 +1143,7 @@ function openBBMModal(member) {
   document.getElementById('bbm-member-label').textContent = fullName(member);
   document.getElementById('photo-preview').style.display = 'none';
   document.getElementById('photo-file-input').value = '';
-  setPhotoMode('upload');
+  document.getElementById('photo-camera-input').value = '';
   document.getElementById('overlay-bbm').classList.remove('hidden');
 }
 
