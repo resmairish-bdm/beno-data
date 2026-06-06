@@ -692,18 +692,20 @@ tbody tr:hover { background: rgba(56,189,248,0.04); }
     </div>
     <div class="encode-body">
 
-      <!-- Single native input — on mobile opens camera OR gallery natively -->
+      <!-- Native file inputs — triggered explicitly via onclick -->
+      <input type="file" id="photo-camera-input" accept="image/*" capture="environment"
+        onchange="handleFileSelect(event)" style="display:none"/>
+      <input type="file" id="photo-file-input" accept="image/*"
+        onchange="handleFileSelect(event)" style="display:none"/>
       <div style="display:flex;gap:10px;margin-bottom:12px">
-        <label class="btn btn-ghost" style="flex:1;text-align:center;cursor:pointer;font-size:13px">
+        <button class="btn btn-ghost" style="flex:1;font-size:13px"
+          onclick="document.getElementById('photo-camera-input').click()">
           📷 Take Photo
-          <input type="file" id="photo-camera-input" accept="image/*" capture="environment"
-            onchange="handleFileSelect(event)" style="display:none"/>
-        </label>
-        <label class="btn btn-ghost" style="flex:1;text-align:center;cursor:pointer;font-size:13px">
+        </button>
+        <button class="btn btn-ghost" style="flex:1;font-size:13px"
+          onclick="document.getElementById('photo-file-input').click()">
           🖼️ Choose File
-          <input type="file" id="photo-file-input" accept="image/*"
-            onchange="handleFileSelect(event)" style="display:none"/>
-        </label>
+        </button>
       </div>
 
       <!-- Preview -->
