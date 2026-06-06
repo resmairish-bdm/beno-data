@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BENO — Beneficiary Enrollment & National ID Organizer</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════════════════
+   DESIGN SYSTEM
+═══════════════════════════════════════════════ */
+:root {
+  --c-bg:        #0b1120;
+  --c-surface:   #111827;
+  --c-panel:     #1c2a3a;
+  --c-border:    #253348;
+  --c-border2:   #2e4060;
+  --c-text:      #e2e8f0;
+  --c-muted:     #7a90ab;
+  --c-accent:    #38bdf8;
+  --c-accent2:   #0ea5e9;
+  --c-green:     #22c55e;
+  --c-green-dim: #166534;
+  --c-red:       #f87171;
+  --c-yellow:    #fbbf24;
+  --c-bbm:       #1d4ed8;
+  --c-bbm-light: #3b82f6;
+  --c-phil:      #15803d;
+  --c-phil-light:#22c55e;
+  --radius:      12px;
+  --radius-sm:   8px;
+  --shadow:      0 4px 24px rgba(0,0,0,0.4);
+  --font:        'Sora', sans-serif;
+  --mono:        'JetBrains Mono', monospace;
+  --transition:  0.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  background: var(--c-bg);
+  color: var(--c-text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Grid background */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+
+/* ─── LAYOUT ─── */
+.app { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; }
+
+header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--c-border);
+  background: rgba(17,24,39,0.9);
+  backdrop-filter: blur(12px);
+  display: flex; align-items: center; gap: 16px;
+  position: sticky; top: 0; z-index: 100;
+}
+
+.logo {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--c-accent), var(--c-bbm));
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px; color: white; flex-shrink: 0;
+}
+
+.header-text h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; }
+.header-text p  { font-size: 11px; color: var(--c-muted); margin-top: 1px; }
+
+.staff-badge {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-radius: 20px;
+  padding: 6px 12px 6px 8px;
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+.staff-badge:hover { border-color: var(--c-accent); }
+.staff-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--c-accent), #818cf8);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: white;
+}
+.staff-name { font-size: 12px; font-weight: 500; }
+
+main { flex: 1; padding: 24px 16px; max-width: 900px; margin: 0 auto; width: 100%; }
+
+/* ─── STAFF NAME MODAL ─── */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.overlay.hidden { display: none; }
+
+.modal {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border2);
+  border-radius: 16px;
+  padding: 28px 24px;
+  width: 100%; max-width: 380px;
+  box-shadow: var(--shadow);
+  animation: modalIn 0.25s ease;
+}
+@keyframes modalIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+.modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.modal p  { font-size: 13px; color: var(--c-muted); margin-bottom: 20px; }
+
+/* ─── INPUTS ─── */
+.input-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.input-group label { font-size: 12px; font-weight: 500; color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+input[type="text"], input[type="search"] {
+  width: 100%;
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--c-text);
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+input:focus {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px rgba(56,189,248,0.12);
+}
+input::placeholder { color: var(--c-muted); }
+
+/* ─── BUTTONS ─── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 18px;
+  border: none; border-radius: var(--radius-sm);
+  font-family: var(--font); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all var(--transition);
+  text-decoration: none; letter-spacing: 0.2px;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--c-accent);
+  color: #0b1120;
+  width: 100%;
+}
+.btn-primary:hover:not(:disabled) {
+  background: #7dd3fc;
+  transform: translateY(-1px);
+}
+
+.btn-bbm {
+  background: linear-gradient(135deg, var(--c-bbm), #2563eb);
+  color: white; flex: 1;
+}
+.btn-bbm:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(29,78,216,0.4); }
+
+.btn-phil {
+  background: linear-gradient(135deg, var(--c-phil), #16a34a);
+  color: white; flex: 1;
+}
+.btn-phil:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(21,128,61,0.4); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--c-muted);
+  border: 1px solid var(--c-border);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--c-panel); color: var(--c-text); }
+
+.btn-icon {
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--c-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-size: 14px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.btn-icon:hover { border-color: var(--c-accent); color: var(--c-accent); background: rgba(56,189,248,0.08); }
+
+/* ─── HOME SCREEN ─── */
+#screen-home { animation: fadeUp 0.35s ease; }
+
+.home-greeting {
+  text-align: center;
+  padding: 32px 0 28px;
+}
+.home-greeting h2 {
+  font-size: clamp(22px,5vw,32px);
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  background: linear-gradient(135deg, var(--c-accent), #a78bfa);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+.home-greeting p { font-size: 14px; color: var(--c-muted); }
+
+.module-cards {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  margin-bottom: 28px;
+}
+@media (max-width: 500px) { .module-cards { grid-template-columns: 1fr; } }
+
+.module-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  padding: 24px;
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative; overflow: hidden;
+}
+.module-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.module-card.bbm::before  { background: radial-gradient(ellipse at top left, rgba(29,78,216,0.15), transparent 60%); }
+.module-card.phil::before { background: radial-gradient(ellipse at top left, rgba(21,128,61,0.15), transparent 60%); }
+.module-card:hover { border-color: var(--c-border2); transform: translateY(-3px); box-shadow: var(--shadow); }
+.module-card:hover::before { opacity: 1; }
+.module-card.bbm:hover  { border-color: var(--c-bbm-light); }
+.module-card.phil:hover { border-color: var(--c-phil-light); }
+
+.card-icon {
+  width: 48px; height: 48px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; margin-bottom: 16px;
+}
+.card-icon.bbm  { background: rgba(29,78,216,0.2); }
+.card-icon.phil { background: rgba(21,128,61,0.2); }
+
+.module-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.module-card p  { font-size: 12px; color: var(--c-muted); line-height: 1.5; }
+
+.card-arrow {
+  position: absolute; bottom: 20px; right: 20px;
+  color: var(--c-muted); font-size: 18px;
+  transition: transform var(--transition), color var(--transition);
+}
+.module-card:hover .card-arrow { transform: translate(3px,-3px); color: var(--c-accent); }
+
+/* ─── SEARCH SCREEN ─── */
+#screen-search { animation: fadeUp 0.35s ease; }
+
+.screen-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 24px;
+}
+.back-btn {
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  color: var(--c-muted);
+  cursor: pointer; font-size: 16px;
+  transition: all var(--transition);
+}
+.back-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
+
+.screen-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.screen-badge.bbm  { background: rgba(29,78,216,0.2); color: var(--c-bbm-light); border: 1px solid rgba(59,130,246,0.3); }
+.screen-badge.phil { background: rgba(21,128,61,0.2);  color: var(--c-phil-light); border: 1px solid rgba(34,197,94,0.3); }
+
+.search-box {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.search-row {
+  display: flex; gap: 10px;
+}
+.search-row input { flex: 1; font-family: var(--mono); font-size: 13px; }
+.search-row .btn  { white-space: nowrap; padding: 10px 18px; }
+
+/* ─── HOUSEHOLD RESULT ─── */
+.household-info {
+  background: var(--c-panel);
+  border: 1px solid var(--c-border2);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+}
+.hh-field { display: flex; flex-direction: column; gap: 2px; }
+.hh-field span:first-child { font-size: 10px; color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.hh-field span:last-child  { font-size: 13px; font-weight: 500; font-family: var(--mono); }
+
+/* ─── MEMBERS TABLE ─── */
+.members-wrap {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.members-title {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--c-border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.members-title h3 { font-size: 13px; font-weight: 600; }
+.member-count {
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 11px; color: var(--c-muted); font-family: var(--mono);
+}
+
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px; min-width: 580px;
+}
+thead tr { background: var(--c-panel); }
+th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--c-muted);
+  white-space: nowrap;
+}
+td {
+  padding: 12px 14px;
+  border-top: 1px solid var(--c-border);
+  vertical-align: middle;
+}
+tbody tr { transition: background var(--transition); }
+tbody tr:hover { background: rgba(56,189,248,0.04); }
+
+.name-cell { font-weight: 500; }
+.id-cell   { font-family: var(--mono); font-size: 12px; color: var(--c-muted); }
+.sex-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px; font-weight: 500;
+}
+.sex-badge.M { background: rgba(56,189,248,0.15); color: var(--c-accent); }
+.sex-badge.F { background: rgba(244,114,182,0.15); color: #f472b6; }
+
+.status-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+}
+.status-badge.has-id  { background: rgba(34,197,94,0.15); color: var(--c-green); }
+.status-badge.no-id   { background: rgba(251,191,36,0.15); color: var(--c-yellow); }
+.status-badge.pending { background: rgba(148,163,184,0.15); color: var(--c-muted); }
+
+/* ─── ENCODE MODAL ─── */
+.encode-modal {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border2);
+  border-radius: 16px;
+  padding: 0;
+  width: 100%; max-width: 440px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: modalIn 0.25s ease;
+}
+.encode-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--c-border);
+}
+.encode-header h2 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.encode-header p  { font-size: 12px; color: var(--c-muted); }
+.encode-body { padding: 20px 24px; }
+.encode-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--c-border);
+  display: flex; gap: 10px;
+}
+
+/* ─── ID TYPE SELECTOR ─── */
+.id-type-group { display: flex; gap: 10px; margin-bottom: 16px; }
+.id-type-btn {
+  flex: 1; padding: 12px;
+  background: var(--c-panel);
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+}
+.id-type-btn:hover { border-color: var(--c-border2); }
+.id-type-btn.active {
+  border-color: var(--c-accent);
+  background: rgba(56,189,248,0.08);
+}
+.id-type-btn span:first-child { display: block; font-size: 16px; font-weight: 700; letter-spacing: 1px; color: var(--c-accent); }
+.id-type-btn span:last-child  { display: block; font-size: 10px; color: var(--c-muted); margin-top: 2px; }
+
+/* ─── PHOTO UPLOAD ─── */
+.photo-drop {
+  border: 2px dashed var(--c-border);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition);
+  background: var(--c-panel);
+  position: relative;
+}
+.photo-drop:hover, .photo-drop.drag-over {
+  border-color: var(--c-bbm-light);
+  background: rgba(29,78,216,0.08);
+}
+.photo-drop input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.photo-drop-icon { font-size: 32px; margin-bottom: 8px; }
+.photo-drop p    { font-size: 13px; color: var(--c-muted); margin-bottom: 4px; }
+.photo-drop small{ font-size: 11px; color: var(--c-muted); opacity: 0.7; }
+
+.photo-actions {
+  display: flex; gap: 10px; margin-bottom: 16px;
+}
+.photo-actions .btn { flex: 1; }
+
+.photo-preview {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--c-border);
+  margin-top: 12px;
+  display: none;
+}
+.photo-preview img { width: 100%; height: 180px; object-fit: cover; display: block; }
+.photo-preview-label {
+  padding: 8px 12px;
+  background: var(--c-panel);
+  font-size: 11px; color: var(--c-muted);
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+/* ─── TOAST ─── */
+.toast-container {
+  position: fixed; bottom: 24px; right: 24px;
+  z-index: 999; display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border2);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 13px; font-weight: 500;
+  box-shadow: var(--shadow);
+  display: flex; align-items: center; gap: 10px;
+  animation: toastIn 0.3s ease;
+  max-width: 320px;
+}
+.toast.success { border-color: var(--c-green-dim); }
+.toast.success .toast-icon { color: var(--c-green); }
+.toast.error   { border-color: #7f1d1d; }
+.toast.error   .toast-icon { color: var(--c-red); }
+.toast.info    .toast-icon { color: var(--c-accent); }
+@keyframes toastIn  { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: translateX(0); } }
+@keyframes toastOut { from { opacity:1; } to { opacity:0; transform: translateX(20px); } }
+
+/* ─── LOADING ─── */
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-row td {
+  text-align: center; padding: 32px;
+  color: var(--c-muted); font-size: 13px;
+}
+
+/* ─── ANIMATIONS ─── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.hidden { display: none !important; }
+
+/* ─── CAMERA MODAL ─── */
+.camera-wrap {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #000;
+  margin-bottom: 12px;
+  position: relative;
+}
+.camera-wrap video {
+  width: 100%; display: block;
+  max-height: 240px; object-fit: cover;
+}
+.camera-wrap canvas { display: none; }
+
+/* ─── PHILSYS ID FORMAT HINT ─── */
+.id-hint {
+  font-size: 11px; color: var(--c-muted);
+  font-family: var(--mono);
+  margin-top: 4px;
+}
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 600px) {
+  main { padding: 16px 12px; }
+  header { padding: 12px 16px; }
+  .header-text h1 { font-size: 13px; }
+  .modal, .encode-modal { border-radius: 12px; }
+  table { font-size: 12px; }
+  th, td { padding: 9px 10px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ═══════ HEADER ═══════ -->
+<header>
+  <div class="logo">BNO</div>
+  <div class="header-text">
+    <h1>BENO</h1>
+    <p>Beneficiary Enrollment & National ID Organizer</p>
+  </div>
+  <div class="staff-badge" onclick="openStaffModal()">
+    <div class="staff-avatar" id="staff-avatar">?</div>
+    <span class="staff-name" id="staff-display">Set Name</span>
+  </div>
+</header>
+
+<!-- ═══════ MAIN ═══════ -->
+<main>
+
+  <!-- HOME SCREEN -->
+  <div id="screen-home">
+    <div class="home-greeting">
+      <h2>What are you recording today?</h2>
+      <p>Select a program to begin household data capture.</p>
+    </div>
+    <div class="module-cards">
+      <div class="module-card phil" onclick="openModule('PHILSYS')">
+        <div class="card-icon phil">🪪</div>
+        <h3>PhilSys Registration</h3>
+        <p>Encode Philippine National ID numbers (PCN or TRN) for registered members.</p>
+        <div class="card-arrow">↗</div>
+      </div>
+      <div class="module-card bbm" onclick="openModule('BBM')">
+        <div class="card-icon bbm">📱</div>
+        <h3>BBM Serbisyo App</h3>
+        <p>Upload MOV / photo proof of BBM Serbisyo App registration per household member.</p>
+        <div class="card-arrow">↗</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEARCH SCREEN -->
+  <div id="screen-search" class="hidden">
+
+    <div class="screen-header">
+      <button class="back-btn" onclick="goHome()">←</button>
+      <div id="module-badge" class="screen-badge">Module</div>
+      <div style="flex:1"></div>
+    </div>
+
+    <div class="search-box">
+      <div class="input-group" style="margin-bottom:0">
+        <label>Search by Household ID (HH_ID)</label>
+        <div class="search-row">
+          <input type="search" id="hh-search-input"
+            placeholder="e.g. 0100005264619"
+            onkeydown="if(event.key==='Enter') doSearch()"/>
+          <button class="btn btn-primary" onclick="doSearch()" id="search-btn"
+            style="width:auto;padding:10px 20px">
+            <span id="search-btn-text">Search</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="result-area" class="hidden">
+      <div class="household-info" id="hh-info-bar"></div>
+      <div class="members-wrap">
+        <div class="members-title">
+          <h3>Family Composition</h3>
+          <span class="member-count" id="member-count-badge">0 members</span>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead id="table-head"></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+</div>
+
+<!-- ═══════ STAFF NAME OVERLAY ═══════ -->
+<div class="overlay" id="overlay-staff">
+  <div class="modal">
+    <h2>👋 Welcome</h2>
+    <p>Please enter your name. This will be recorded with each submission you make.</p>
+    <div class="input-group">
+      <label>Your Full Name</label>
+      <input type="text" id="staff-name-input" placeholder="e.g. Maria Santos"
+        onkeydown="if(event.key==='Enter') saveStaffName()"/>
+    </div>
+    <button class="btn btn-primary" onclick="saveStaffName()">Continue →</button>
+  </div>
+</div>
+
+<!-- ═══════ PHILSYS ENCODE MODAL ═══════ -->
+<div class="overlay hidden" id="overlay-philsys">
+  <div class="encode-modal">
+    <div class="encode-header">
+      <h2>🪪 Encode PhilSys ID</h2>
+      <p id="philsys-member-label">Member name here</p>
+    </div>
+    <div class="encode-body">
+      <div class="input-group">
+        <label>ID Type</label>
+        <div class="id-type-group">
+          <div class="id-type-btn active" id="btn-pcn" onclick="selectIdType('PCN')">
+            <span>PCN</span>
+            <span>PhilSys Card Number</span>
+          </div>
+          <div class="id-type-btn" id="btn-trn" onclick="selectIdType('TRN')">
+            <span>TRN</span>
+            <span>Transaction Reference No.</span>
+          </div>
+        </div>
+      </div>
+      <div class="input-group">
+        <label>ID Number</label>
+        <input type="text" id="philsys-id-input"
+          placeholder="e.g. 1234-5678-9012-3456"
+          oninput="formatPhilSysId(this)"/>
+        <div class="id-hint" id="id-hint-text">PCN format: XXXX-XXXX-XXXX-XXXX</div>
+      </div>
+    </div>
+    <div class="encode-footer">
+      <button class="btn btn-ghost" style="flex:1" onclick="closePhilSysModal()">Cancel</button>
+      <button class="btn btn-phil" style="flex:1" onclick="submitPhilSys()" id="philsys-submit-btn">
+        <span id="philsys-submit-text">Save ID</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ BBM PHOTO MODAL ═══════ -->
+<div class="overlay hidden" id="overlay-bbm">
+  <div class="encode-modal">
+    <div class="encode-header">
+      <h2>📸 Upload MOV Photo</h2>
+      <p id="bbm-member-label">Member name here</p>
+    </div>
+    <div class="encode-body">
+
+      <!-- Mode toggle: upload vs camera -->
+      <div class="photo-actions">
+        <button class="btn btn-ghost" id="btn-upload-mode" onclick="setPhotoMode('upload')" style="font-size:13px">
+          📁 Upload File
+        </button>
+        <button class="btn btn-ghost" id="btn-camera-mode" onclick="setPhotoMode('camera')" style="font-size:13px">
+          📷 Use Camera
+        </button>
+      </div>
+
+      <!-- Upload mode -->
+      <div id="upload-mode-ui">
+        <div class="photo-drop" id="photo-drop-zone"
+          ondragover="event.preventDefault(); this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="handleDrop(event)">
+          <input type="file" id="photo-file-input" accept="image/*,application/pdf"
+            onchange="handleFileSelect(event)"/>
+          <div class="photo-drop-icon">🖼️</div>
+          <p>Tap to choose a file or drag & drop</p>
+          <small>JPG, PNG, PDF accepted</small>
+        </div>
+      </div>
+
+      <!-- Camera mode -->
+      <div id="camera-mode-ui" class="hidden">
+        <div class="camera-wrap" id="camera-wrap">
+          <video id="camera-video" autoplay playsinline muted></video>
+          <canvas id="camera-canvas"></canvas>
+        </div>
+        <button class="btn btn-bbm" onclick="capturePhoto()" style="width:100%;margin-bottom:10px">
+          📸 Capture Photo
+        </button>
+      </div>
+
+      <!-- Preview -->
+      <div class="photo-preview" id="photo-preview">
+        <img id="preview-img" src="" alt="Preview"/>
+        <div class="photo-preview-label">
+          <span id="preview-filename">filename.jpg</span>
+          <button class="btn-icon" onclick="clearPhoto()" style="font-size:11px;padding:3px 8px">✕ Clear</button>
+        </div>
+      </div>
+
+    </div>
+    <div class="encode-footer">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeBBMModal()">Cancel</button>
+      <button class="btn btn-bbm" style="flex:1" onclick="submitBBMPhoto()" id="bbm-submit-btn">
+        <span id="bbm-submit-text">Upload & Save</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  ⚙️  CONFIGURATION
+// ═══════════════════════════════════════════════════════
+// Apps Script URL — used ONLY for write actions (savePhilSys, saveBBMPhoto)
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzexLFAoWycwyEkyDxqE9xrsve-975ZbvI2fSlUNmuoggxd6BUTNZR6D08Y2Km1_dMS/exec';
+
+// GitHub raw base URL — update YOUR_USERNAME and YOUR_REPO after uploading
+// Example: 'https://raw.githubusercontent.com/jdelacruz/beno-data/main'
+const GITHUB_BASE = 'https://raw.githubusercontent.com/resmairish-bdm/beno-data/main';
+
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+let currentModule  = null;  // 'BBM' or 'PHILSYS'
+let currentHH      = null;  // household object from search
+let currentMember  = null;  // member being encoded
+let selectedIdType = 'PCN';
+let photoBlob      = null;
+let photoFileName  = null;
+let cameraStream   = null;
+let staffName      = '';
+
+// In-memory cache for loaded masterlist data (loaded once per session)
+const _masterCache = { BBM: null, PHILSYS: null };
+
+// ─── Decompress and parse a .json.gz file from a URL ───
+async function fetchGz(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Failed to load data (${resp.status}). Check GITHUB_BASE setting.`);
+  const ds = new DecompressionStream('gzip');
+  const decompressed = resp.body.pipeThrough(ds);
+  const reader = decompressed.getReader();
+  const chunks = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const merged = new Uint8Array(chunks.reduce((acc, c) => acc + c.length, 0));
+  let offset = 0;
+  for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+  return JSON.parse(new TextDecoder().decode(merged));
+}
+
+// ─── Load full masterlist (cached after first load) ───
+async function getMasterlist(module) {
+  if (_masterCache[module]) return _masterCache[module];
+  const file = module === 'BBM' ? 'bbm_master.json.gz' : 'philsys_master.json.gz';
+  const data = await fetchGz(`${GITHUB_BASE}/${file}`);
+  _masterCache[module] = data;
+  return data;
+}
+
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('sdn_staff_name');
+  if (saved) {
+    staffName = saved;
+    updateStaffUI();
+  } else {
+    document.getElementById('overlay-staff').classList.remove('hidden');
+    setTimeout(() => document.getElementById('staff-name-input').focus(), 100);
+  }
+});
+
+function updateStaffUI() {
+  document.getElementById('staff-display').textContent = staffName;
+  document.getElementById('staff-avatar').textContent  = staffName.charAt(0).toUpperCase();
+}
+
+function saveStaffName() {
+  const val = document.getElementById('staff-name-input').value.trim();
+  if (!val) { toast('Please enter your name.', 'error'); return; }
+  staffName = val;
+  localStorage.setItem('sdn_staff_name', val);
+  updateStaffUI();
+  document.getElementById('overlay-staff').classList.add('hidden');
+}
+
+function openStaffModal() {
+  document.getElementById('staff-name-input').value = staffName;
+  document.getElementById('overlay-staff').classList.remove('hidden');
+  setTimeout(() => document.getElementById('staff-name-input').focus(), 100);
+}
+
+// ═══════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════
+function openModule(module) {
+  if (!staffName) { openStaffModal(); return; }
+  currentModule = module;
+  document.getElementById('screen-home').classList.add('hidden');
+  document.getElementById('screen-search').classList.remove('hidden');
+
+  const badge   = document.getElementById('module-badge');
+  badge.textContent = module === 'BBM' ? '📱 BBM Serbisyo App' : '🪪 PhilSys Registration';
+  badge.className   = 'screen-badge ' + module.toLowerCase();
+
+  document.getElementById('hh-search-input').value = '';
+  document.getElementById('result-area').classList.add('hidden');
+  setTimeout(() => document.getElementById('hh-search-input').focus(), 100);
+}
+
+function goHome() {
+  stopCamera();
+  currentHH = null; currentMember = null;
+  document.getElementById('screen-search').classList.add('hidden');
+  document.getElementById('screen-home').classList.remove('hidden');
+}
+
+// ═══════════════════════════════════════════════════════
+//  SEARCH — reads from GitHub .json.gz masterlist files
+// ═══════════════════════════════════════════════════════
+async function doSearch() {
+  const hhId = document.getElementById('hh-search-input').value.trim();
+  if (!hhId) { toast('Please enter an HH_ID.', 'error'); return; }
+
+  const btn  = document.getElementById('search-btn');
+  const txt  = document.getElementById('search-btn-text');
+  btn.disabled = true;
+
+  const alreadyLoaded = !!_masterCache[currentModule];
+  txt.innerHTML = alreadyLoaded
+    ? '<div class="spinner"></div>'
+    : '<div class="spinner"></div> Loading…';
+
+  try {
+    // Step 1: load masterlist from GitHub
+    const records = await getMasterlist(currentModule);
+    const members = records.filter(r => r.HH_ID === hhId);
+
+    if (!members.length) {
+      toast('Household not found. Check the HH_ID and try again.', 'error');
+      return;
+    }
+
+    // Step 2: fetch existing output data from Apps Script (encoded IDs + CBDO Remarks)
+    let outputMap = {};
+    try {
+      const outData = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId, module: currentModule });
+      if (outData && outData.records) {
+        outData.records.forEach(r => { outputMap[String(r.entryId)] = r; });
+      }
+    } catch(e) { /* non-fatal — output sheet data is supplementary */ }
+
+    // Step 3: merge output data into members
+    const mergedMembers = members.map(m => {
+      const out = outputMap[String(m.ENTRY_ID)];
+      if (!out) return m;
+      return {
+        ...m,
+        // Overlay encoded PhilSys ID if present in output sheet
+        VALIDATED_PCN_TRN: out.idValue || m.VALIDATED_PCN_TRN || '',
+        ENCODED_ID_TYPE:   out.idType  || '',
+        // CBDO Remarks from output sheet
+        CBDO_REMARKS:      out.cbdoRemarks || '',
+        // MOV photo link if present
+        MOV_DRIVE_URL:     out.driveLink  || '',
+      };
+    });
+
+    const first = mergedMembers[0];
+    currentHH = {
+      found: true,
+      household: {
+        HH_ID:        first.HH_ID,
+        BARANGAY:     first.BARANGAY,
+        MUNICIPALITY: first.MUNICIPALITY,
+        PROVINCE:     first.PROVINCE,
+        REGION:       first.REGION,
+      },
+      members: mergedMembers
+    };
+    renderHousehold(currentHH);
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    txt.textContent = 'Search';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDER HOUSEHOLD
+// ═══════════════════════════════════════════════════════
+function renderHousehold(data) {
+  const { household, members } = data;
+
+  // Info bar
+  document.getElementById('hh-info-bar').innerHTML = `
+    <div class="hh-field">
+      <span>HH_ID</span>
+      <span>${household.HH_ID}</span>
+    </div>
+    <div class="hh-field">
+      <span>Barangay</span>
+      <span>${household.BARANGAY}</span>
+    </div>
+    <div class="hh-field">
+      <span>Municipality</span>
+      <span>${household.MUNICIPALITY}</span>
+    </div>
+    <div class="hh-field">
+      <span>Province</span>
+      <span>${household.PROVINCE}</span>
+    </div>`;
+
+  document.getElementById('member-count-badge').textContent =
+    members.length + ' member' + (members.length !== 1 ? 's' : '');
+
+  // Table headers & body differ per module
+  if (currentModule === 'PHILSYS') renderPhilSysTable(members);
+  else                              renderBBMTable(members);
+
+  document.getElementById('result-area').classList.remove('hidden');
+}
+
+function fullName(m) {
+  return [m.LAST_NAME, m.FIRST_NAME, m.MIDDLE_NAME, m.EXT_NAME]
+    .filter(Boolean).join(' ');
+}
+
+// Excel serial date → readable string (e.g. 43711 → "Oct 20, 1996")
+function formatBirthday(val) {
+  if (!val) return '—';
+  const n = parseInt(val);
+  if (isNaN(n) || n < 10000) return val; // already a string or invalid
+  const date = new Date((n - 25569) * 86400 * 1000);
+  if (isNaN(date.getTime())) return val;
+  return date.toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' });
+}
+
+function renderPhilSysTable(members) {
+  document.getElementById('table-head').innerHTML = `<tr>
+    <th>Entry ID</th><th>Name</th><th>Relation</th>
+    <th>Sex</th><th>Age</th><th>Birthday</th>
+    <th>PhilSys ID</th><th>CBDO Status</th><th>Action</th>
+  </tr>`;
+
+  const rows = members.map(m => {
+    const name   = fullName(m);
+    const idVal  = (m.VALIDATED_PCN_TRN || '').trim();
+    const idType = m.ENCODED_ID_TYPE || '';
+    const cbdo   = (m.CBDO_REMARKS || '').trim();
+    const decl   = (m.DECLARATION  || '').trim();
+
+    // PhilSys ID cell — show actual ID from masterlist OR output sheet
+    const idLabel = idVal
+      ? `<span class="status-badge has-id" title="${idVal}">&#10003; ${idType ? idType+': ' : ''}${truncate(idVal, 18)}</span>`
+      : `<span class="status-badge pending">&mdash; Pending</span>`;
+
+    // CBDO Status — "Encoded" if CBDO Remarks filled; else masterlist declaration; else pending
+    const cbdoBadge = cbdo
+      ? `<span class="status-badge has-id" style="background:rgba(56,189,248,0.15);color:var(--c-accent)" title="${cbdo}">&#10003; Encoded</span>`
+      : (decl && decl !== 'PENDING')
+        ? `<span class="status-badge has-id" style="font-size:9px">${decl}</span>`
+        : `<span class="status-badge pending">&mdash; Pending</span>`;
+
+    return `<tr>
+      <td class="id-cell">${m.ENTRY_ID}</td>
+      <td class="name-cell">${name}</td>
+      <td style="font-size:11px;color:var(--c-muted)">${m.RELATION_TO_HH_HEAD || m.RELATION || '&mdash;'}</td>
+      <td><span class="sex-badge ${m.SEX === 'MALE' ? 'M' : 'F'}">${m.SEX === 'MALE' ? 'M' : 'F'}</span></td>
+      <td>${m.AGE}</td>
+      <td style="font-size:11px">${formatBirthday(m.BIRTHDAY_FORMATTED || m.BIRTHDAY)}</td>
+      <td id="philsys-id-${m.ENTRY_ID}">${idLabel}</td>
+      <td id="cbdo-status-${m.ENTRY_ID}">${cbdoBadge}</td>
+      <td>
+        <button class="btn-icon" title="Encode PhilSys ID"
+          onclick='openPhilSysModal(${JSON.stringify(m).replace(/'/g,"\'")} )'>
+          &#9999;&#65039; Encode
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('table-body').innerHTML = rows;
+}
+function renderBBMTable(members) {
+  document.getElementById('table-head').innerHTML = `<tr>
+    <th>Entry ID</th><th>Name</th><th>Member Status</th>
+    <th>Sex</th><th>Age</th><th>Birthday</th>
+    <th>PCN/TRN</th><th>MOV Photo</th><th>Action</th>
+  </tr>`;
+
+  const rows = members.map(m => {
+    const name  = fullName(m);
+    const hasPcn = m.PCN && m.PCN.trim() !== '';
+    const hasTrn = m.TRN && m.TRN.trim() !== '';
+    const idBadge = hasPcn
+      ? `<span class="status-badge has-id">PCN</span>`
+      : hasTrn
+      ? `<span class="status-badge no-id">TRN</span>`
+      : `<span class="status-badge pending">—</span>`;
+
+    return `<tr>
+      <td class="id-cell">${m.ENTRY_ID}</td>
+      <td class="name-cell">${name}</td>
+      <td style="font-size:11px;color:var(--c-muted)">${m.MEMBER_STATUS || '—'}</td>
+      <td><span class="sex-badge ${m.SEX === 'MALE' ? 'M' : 'F'}">${m.SEX === 'MALE' ? 'M' : 'F'}</span></td>
+      <td>${m.AGE}</td>
+      <td style="font-size:11px">${formatBirthday(m.BIRTHDAY_FORMATTED || m.BIRTHDAY)}</td>
+      <td>${idBadge}</td>
+      <td id="mov-status-${m.ENTRY_ID}">${
+        m.MOV_DRIVE_URL
+          ? '<a href="' + m.MOV_DRIVE_URL + '" target="_blank" style="text-decoration:none"><span class="status-badge has-id">✓ Uploaded</span></a>'
+          : '<span class="status-badge pending">&mdash; Not uploaded</span>'
+      }</td>
+      <td>
+        <button class="btn-icon" title="Upload MOV Photo"
+          onclick='openBBMModal(${JSON.stringify(m).replace(/'/g,"\\'")} )'>
+          📸 Upload
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('table-body').innerHTML = rows;
+}
+
+function truncate(str, n) {
+  return str && str.length > n ? str.slice(0, n) + '…' : str;
+}
+
+// ═══════════════════════════════════════════════════════
+//  PHILSYS MODAL
+// ═══════════════════════════════════════════════════════
+function openPhilSysModal(member) {
+  currentMember = member;
+  selectedIdType = 'PCN';
+  document.getElementById('philsys-member-label').textContent = fullName(member);
+  document.getElementById('philsys-id-input').value = '';
+  document.getElementById('btn-pcn').classList.add('active');
+  document.getElementById('btn-trn').classList.remove('active');
+  document.getElementById('id-hint-text').textContent = 'PCN format: XXXX-XXXX-XXXX-XXXX';
+  document.getElementById('overlay-philsys').classList.remove('hidden');
+  setTimeout(() => document.getElementById('philsys-id-input').focus(), 100);
+}
+
+function closePhilSysModal() {
+  document.getElementById('overlay-philsys').classList.add('hidden');
+}
+
+function selectIdType(type) {
+  selectedIdType = type;
+  document.getElementById('btn-pcn').classList.toggle('active', type === 'PCN');
+  document.getElementById('btn-trn').classList.toggle('active', type === 'TRN');
+  document.getElementById('philsys-id-input').value = '';
+  document.getElementById('id-hint-text').textContent =
+    type === 'PCN' ? 'PCN format: XXXX-XXXX-XXXX-XXXX'
+                   : 'TRN format: numeric (up to 29 digits)';
+}
+
+function formatPhilSysId(input) {
+  if (selectedIdType !== 'PCN') return;
+  let v = input.value.replace(/\D/g, '').slice(0, 16);
+  input.value = v.match(/.{1,4}/g)?.join('-') || v;
+}
+
+async function submitPhilSys() {
+  const idVal = document.getElementById('philsys-id-input').value.trim();
+  if (!idVal) { toast('Please enter an ID number.', 'error'); return; }
+  if (selectedIdType === 'PCN' && !/^\d{4}-\d{4}-\d{4}-\d{4}$/.test(idVal)) {
+    toast('PCN must be in XXXX-XXXX-XXXX-XXXX format.', 'error'); return;
+  }
+
+  const btn  = document.getElementById('philsys-submit-btn');
+  const txt  = document.getElementById('philsys-submit-text');
+  btn.disabled = true;
+  txt.innerHTML = '<div class="spinner"></div> Saving…';
+
+  try {
+    const data = await jsonp(APPS_SCRIPT_URL, {
+      action:       'savePhilSys',
+      entryId:      currentMember.ENTRY_ID,
+      hhId:         currentMember.HH_ID,
+      memberName:   fullName(currentMember),
+      municipality: currentMember.MUNICIPALITY,
+      barangay:     currentMember.BARANGAY,
+      idType:       selectedIdType,
+      idValue:      idVal,
+      encodedBy:    staffName,
+      timestamp:    new Date().toISOString()
+    });
+    if (data.error) throw new Error(data.error);
+
+    toast('PhilSys ID saved successfully! ✓', 'success');
+    // Update the PhilSys ID cell in the table immediately (no full re-search needed)
+    const idCell = document.getElementById('philsys-id-' + currentMember.ENTRY_ID);
+    if (idCell) {
+      idCell.innerHTML = `<span class="status-badge has-id">✓ ${selectedIdType}: ${truncate(idVal, 18)}</span>`;
+    }
+    closePhilSysModal();
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    txt.textContent = 'Save ID';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  BBM PHOTO MODAL
+// ═══════════════════════════════════════════════════════
+function openBBMModal(member) {
+  currentMember = member;
+  photoBlob = null; photoFileName = null;
+  document.getElementById('bbm-member-label').textContent = fullName(member);
+  document.getElementById('photo-preview').style.display = 'none';
+  document.getElementById('photo-file-input').value = '';
+  setPhotoMode('upload');
+  document.getElementById('overlay-bbm').classList.remove('hidden');
+}
+
+function closeBBMModal() {
+  stopCamera();
+  document.getElementById('overlay-bbm').classList.add('hidden');
+}
+
+function setPhotoMode(mode) {
+  const uploadUI = document.getElementById('upload-mode-ui');
+  const cameraUI = document.getElementById('camera-mode-ui');
+  const btnUp    = document.getElementById('btn-upload-mode');
+  const btnCam   = document.getElementById('btn-camera-mode');
+
+  if (mode === 'upload') {
+    uploadUI.classList.remove('hidden');
+    cameraUI.classList.add('hidden');
+    btnUp.style.borderColor = 'var(--c-accent)';
+    btnCam.style.borderColor = '';
+    stopCamera();
+  } else {
+    uploadUI.classList.add('hidden');
+    cameraUI.classList.remove('hidden');
+    btnUp.style.borderColor = '';
+    btnCam.style.borderColor = 'var(--c-bbm-light)';
+    startCamera();
+  }
+}
+
+async function startCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    document.getElementById('camera-video').srcObject = cameraStream;
+  } catch(e) {
+    toast('Camera access denied or unavailable.', 'error');
+    setPhotoMode('upload');
+  }
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+}
+
+function capturePhoto() {
+  const video  = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  canvas.width  = video.videoWidth  || 640;
+  canvas.height = video.videoHeight || 480;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob(blob => {
+    photoBlob     = blob;
+    photoFileName = `MOV_${currentMember.ENTRY_ID}_${Date.now()}.jpg`;
+    showPreview(blob, photoFileName);
+  }, 'image/jpeg', 0.85);
+  stopCamera();
+  setPhotoMode('upload');
+}
+
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) processFile(file);
+}
+
+function handleDrop(event) {
+  event.preventDefault();
+  document.getElementById('photo-drop-zone').classList.remove('drag-over');
+  const file = event.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+
+function processFile(file) {
+  photoBlob     = file;
+  photoFileName = `MOV_${currentMember.ENTRY_ID}_${Date.now()}_${file.name}`;
+  showPreview(file, file.name);
+}
+
+function showPreview(blob, name) {
+  const preview = document.getElementById('photo-preview');
+  const img     = document.getElementById('preview-img');
+  const lbl     = document.getElementById('preview-filename');
+
+  if (blob.type && blob.type.startsWith('image/')) {
+    img.src = URL.createObjectURL(blob);
+    preview.style.display = 'block';
+  } else {
+    img.src = '';
+    preview.style.display = 'block';
+  }
+  lbl.textContent = name;
+}
+
+function clearPhoto() {
+  photoBlob = null; photoFileName = null;
+  document.getElementById('photo-preview').style.display = 'none';
+  document.getElementById('photo-file-input').value = '';
+}
+
+// ─── Compress any image blob to a small JPEG via canvas ───
+// Resizes to max 1024px on the longest side, quality 0.7 → typically ~80-150KB
+function compressImage(blob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1024;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else        { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(compressed => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(compressed);
+      }, 'image/jpeg', 0.72);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function submitBBMPhoto() {
+  if (!photoBlob) { toast('Please select or capture a photo first.', 'error'); return; }
+
+  const btn = document.getElementById('bbm-submit-btn');
+  const txt = document.getElementById('bbm-submit-text');
+  btn.disabled = true;
+  txt.innerHTML = '<div class="spinner"></div> Compressing…';
+
+  try {
+    // Compress image to ~100-150KB JPEG so it fits in a JSONP GET request
+    const base64 = await compressImage(photoBlob);
+
+    txt.innerHTML = '<div class="spinner"></div> Uploading…';
+
+    // Send via JSONP (GET) — works cross-origin with Apps Script, no CORS issues
+    const data = await jsonp(APPS_SCRIPT_URL, {
+      action:       'saveBBMPhoto',
+      entryId:      currentMember.ENTRY_ID,
+      hhId:         currentMember.HH_ID,
+      memberName:   fullName(currentMember),
+      municipality: currentMember.MUNICIPALITY,
+      barangay:     currentMember.BARANGAY,
+      fileName:     photoFileName || ('MOV_' + currentMember.ENTRY_ID + '_' + Date.now() + '.jpg'),
+      mimeType:     'image/jpeg',
+      base64Data:   base64,
+      encodedBy:    staffName,
+      timestamp:    new Date().toISOString()
+    }, 60000); // 60s timeout for upload
+
+    if (data.error) throw new Error(data.error);
+
+    // Update MOV status badge in the table immediately
+    const statusEl = document.getElementById('mov-status-' + currentMember.ENTRY_ID);
+    if (statusEl) {
+      statusEl.innerHTML = '<a href="' + data.fileUrl + '" target="_blank" style="text-decoration:none">'
+        + '<span class="status-badge has-id">&#10003; Uploaded</span></a>';
+    }
+
+    toast('Photo uploaded to Google Drive! ✓', 'success');
+    closeBBMModal();
+  } catch(e) {
+    toast('Upload error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    txt.textContent = 'Upload & Save';
+  }
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  JSONP HELPER — bypasses CORS for Apps Script
+// ═══════════════════════════════════════════════════════
+function jsonp(baseUrl, params, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'beno_cb_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    const timer  = setTimeout(() => {
+      delete window[cbName];
+      script.remove();
+      reject(new Error('Request timed out. Please try again.'));
+    }, timeout);
+
+    window[cbName] = (data) => {
+      clearTimeout(timer);
+      delete window[cbName];
+      script.remove();
+      resolve(data);
+    };
+
+    const qs = Object.entries({ ...params, callback: cbName })
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+      .join('&');
+
+    const script = document.createElement('script');
+    script.src   = baseUrl + '?' + qs;
+    script.onerror = () => {
+      clearTimeout(timer);
+      delete window[cbName];
+      script.remove();
+      reject(new Error('Could not reach the server. Check your Apps Script URL.'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  TOAST NOTIFICATIONS
+// ═══════════════════════════════════════════════════════
+function toast(message, type = 'info') {
+  const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+  const el   = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span class="toast-icon">${icon}</span><span>${message}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'toastOut 0.3s ease forwards';
+    setTimeout(() => el.remove(), 300);
+  }, 3500);
+}
+
+// ═══════════════════════════════════════════════════════
+//  CLOSE MODALS ON OVERLAY CLICK
+// ═══════════════════════════════════════════════════════
+document.getElementById('overlay-philsys').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closePhilSysModal();
+});
+document.getElementById('overlay-bbm').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeBBMModal();
+});
+</script>
+</body>
+</html>
