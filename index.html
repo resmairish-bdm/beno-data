@@ -615,7 +615,14 @@ tbody tr:hover { background: rgba(56,189,248,0.04); }
       <div class="members-wrap">
         <div class="members-title">
           <h3>Family Composition</h3>
-          <span class="member-count" id="member-count-badge">0 members</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="member-count" id="member-count-badge">0 members</span>
+            <button id="refresh-status-btn" class="btn btn-ghost"
+              onclick="refreshOutputStatus()"
+              style="font-size:11px;padding:4px 10px;display:none">
+              ⟳ Refresh Status
+            </button>
+          </div>
         </div>
         <div class="table-scroll">
           <table>
@@ -735,7 +742,7 @@ tbody tr:hover { background: rgba(56,189,248,0.04); }
 //  ⚙️  CONFIGURATION
 // ═══════════════════════════════════════════════════════
 // Apps Script URL — used ONLY for write actions (savePhilSys, saveBBMPhoto)
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHqx01uzO2qWFAXB3Bvqy8zZba5yygsoWqUHjTcZKXtPCrWZeNzIH-n3nr9hZpK_Op/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwmiqIN3KFx4DjEnTgzEyXG3-XA6jFEQ2uBhvzgkYaSxVoewSF3e1g0kD_1L8uEOsGV/exec';
 
 // GitHub raw base URL — update YOUR_USERNAME and YOUR_REPO after uploading
 // Example: 'https://raw.githubusercontent.com/jdelacruz/beno-data/main'
@@ -850,63 +857,51 @@ async function doSearch() {
   const hhId = document.getElementById('hh-search-input').value.trim();
   if (!hhId) { toast('Please enter an HH_ID.', 'error'); return; }
 
-  const btn  = document.getElementById('search-btn');
-  const txt  = document.getElementById('search-btn-text');
+  const btn = document.getElementById('search-btn');
+  const txt = document.getElementById('search-btn-text');
   btn.disabled = true;
-
-  const alreadyLoaded = !!_masterCache[currentModule];
-  txt.innerHTML = alreadyLoaded
+  txt.innerHTML = _masterCache[currentModule]
     ? '<div class="spinner"></div>'
     : '<div class="spinner"></div> Loading…';
 
   try {
-    // Step 1: load masterlist from GitHub
+    // 1. Load masterlist from GitHub (cached after first load)
     const records = await getMasterlist(currentModule);
     const members = records.filter(r => r.HH_ID === hhId);
+    if (!members.length) { toast('Household not found.', 'error'); return; }
 
-    if (!members.length) {
-      toast('Household not found. Check the HH_ID and try again.', 'error');
-      return;
-    }
-
-    // Step 2: fetch existing output data from Apps Script (encoded IDs + CBDO Remarks)
+    // 2. Load output sheet data (encoded IDs + CBDO remarks)
     let outputMap = {};
     try {
-      const outData = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId, module: currentModule });
-      if (outData && outData.records) {
-        outData.records.forEach(r => { outputMap[String(r.entryId)] = r; });
+      const out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId });
+      if (out && out.records) {
+        out.records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
       }
-    } catch(e) { /* non-fatal — output sheet data is supplementary */ }
+    } catch(e) { console.warn('getOutputData:', e.message); }
 
-    // Step 3: merge output data into members
-    const mergedMembers = members.map(m => {
-      const out = outputMap[String(m.ENTRY_ID)];
-      if (!out) return m;
+    // 3. Merge output data into member objects
+    const merged = members.map(m => {
+      const o = outputMap[String(m.ENTRY_ID).trim()];
+      if (!o) return { ...m };
       return {
         ...m,
-        // Overlay encoded PhilSys ID if present in output sheet
-        VALIDATED_PCN_TRN: out.idValue || m.VALIDATED_PCN_TRN || '',
-        ENCODED_ID_TYPE:   out.idType  || '',
-        // CBDO Remarks from output sheet
-        CBDO_REMARKS:      out.cbdoRemarks || '',
-        // MOV photo link if present
-        MOV_DRIVE_URL:     out.driveLink  || '',
+        VALIDATED_PCN_TRN: o.idValue     || m.VALIDATED_PCN_TRN || '',
+        ENCODED_ID_TYPE:   o.idType      || '',
+        CBDO_REMARKS:      o.cbdoRemarks || '',
+        MOV_DRIVE_URL:     o.driveLink   || ''
       };
     });
 
-    const first = mergedMembers[0];
+    // 4. Set global state and render
     currentHH = {
       found: true,
-      household: {
-        HH_ID:        first.HH_ID,
-        BARANGAY:     first.BARANGAY,
-        MUNICIPALITY: first.MUNICIPALITY,
-        PROVINCE:     first.PROVINCE,
-        REGION:       first.REGION,
-      },
-      members: mergedMembers
+      household: { HH_ID: merged[0].HH_ID, BARANGAY: merged[0].BARANGAY,
+                   MUNICIPALITY: merged[0].MUNICIPALITY, PROVINCE: merged[0].PROVINCE,
+                   REGION: merged[0].REGION },
+      members: merged
     };
     renderHousehold(currentHH);
+
   } catch(e) {
     toast('Error: ' + e.message, 'error');
   } finally {
@@ -914,6 +909,64 @@ async function doSearch() {
     txt.textContent = 'Search';
   }
 }
+
+
+// ═══════════════════════════════════════════════════════
+//  REFRESH OUTPUT STATUS
+// ═══════════════════════════════════════════════════════
+async function refreshOutputStatus() {
+  if (!currentHH) return;
+  const hhId = currentHH.household.HH_ID;
+  const btn  = document.getElementById('refresh-status-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Refreshing…'; }
+  try {
+    const out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId });
+    if (!out || !out.records) throw new Error('No response from server.');
+
+    const outputMap = {};
+    out.records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
+
+    currentHH.members.forEach(m => {
+      const o = outputMap[String(m.ENTRY_ID).trim()];
+      if (!o) return;
+
+      // Update member object so re-renders keep the data
+      if (o.idValue)     m.VALIDATED_PCN_TRN = o.idValue;
+      if (o.idType)      m.ENCODED_ID_TYPE   = o.idType;
+      if (o.cbdoRemarks !== undefined) m.CBDO_REMARKS = o.cbdoRemarks;
+      if (o.driveLink)   m.MOV_DRIVE_URL     = o.driveLink;
+
+      // Update PhilSys ID cell
+      const idCell = document.getElementById('philsys-id-' + m.ENTRY_ID);
+      if (idCell && o.idValue) {
+        idCell.innerHTML = '<span class="status-badge has-id" title="' + o.idValue + '">&#10003; '
+          + (o.idType ? o.idType + ': ' : '') + truncate(o.idValue, 18) + '</span>';
+      }
+
+      // Update CBDO Status cell
+      const cbdoCell = document.getElementById('cbdo-status-' + m.ENTRY_ID);
+      if (cbdoCell && o.cbdoRemarks) {
+        cbdoCell.innerHTML = '<span class="status-badge has-id" '
+          + 'style="background:rgba(56,189,248,0.15);color:var(--c-accent)" '
+          + 'title="' + o.cbdoRemarks + '">&#10003; Encoded</span>';
+      }
+
+      // Update BBM MOV cell
+      const movCell = document.getElementById('mov-status-' + m.ENTRY_ID);
+      if (movCell && o.driveLink) {
+        movCell.innerHTML = '<a href="' + o.driveLink + '" target="_blank" style="text-decoration:none">'
+          + '<span class="status-badge has-id">&#10003; Uploaded</span></a>';
+      }
+    });
+
+    toast('Status refreshed ✓', 'success');
+  } catch(e) {
+    toast('Refresh failed: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ Refresh Status'; }
+  }
+}
+
 
 // ═══════════════════════════════════════════════════════
 //  RENDER HOUSEHOLD
@@ -948,6 +1001,7 @@ function renderHousehold(data) {
   else                              renderBBMTable(members);
 
   document.getElementById('result-area').classList.remove('hidden');
+  document.getElementById('refresh-status-btn').style.display = 'inline-flex';
 }
 
 function fullName(m) {
@@ -1119,11 +1173,18 @@ async function submitPhilSys() {
     });
     if (data.error) throw new Error(data.error);
 
-    toast('PhilSys ID saved successfully! ✓', 'success');
-    // Update the PhilSys ID cell in the table immediately (no full re-search needed)
+    toast('PhilSys ID saved! ✓', 'success');
+
+    // Update live member object so re-renders keep the value
+    if (currentHH) {
+      const live = currentHH.members.find(m => m.ENTRY_ID === currentMember.ENTRY_ID);
+      if (live) { live.VALIDATED_PCN_TRN = idVal; live.ENCODED_ID_TYPE = selectedIdType; }
+    }
+
+    // Update table cell immediately
     const idCell = document.getElementById('philsys-id-' + currentMember.ENTRY_ID);
     if (idCell) {
-      idCell.innerHTML = `<span class="status-badge has-id">✓ ${selectedIdType}: ${truncate(idVal, 18)}</span>`;
+      idCell.innerHTML = '<span class="status-badge has-id">&#10003; ' + selectedIdType + ': ' + truncate(idVal, 18) + '</span>';
     }
     closePhilSysModal();
   } catch(e) {
@@ -1196,95 +1257,38 @@ function clearPhoto() {
   document.getElementById('photo-file-input').value = '';
 }
 
-// ─── Compress image to small JPEG base64 string ───
-// Max 640px, quality 0.6 → typically 30-70KB base64
-function compressToBase64(blob) {
+// ─── Compress image and upload via chunked JSONP ───
+// Splits base64 into ~1500-char chunks sent one at a time via JSONP GET
+// Apps Script reassembles using CacheService, then saves to Drive
+
+function compressToBase64(blob, maxPx, quality) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const MAX = 640;
       let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-        else        { w = Math.round(w * MAX / h); h = MAX; }
+      if (w > maxPx || h > maxPx) {
+        if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else        { w = Math.round(w * maxPx / h); h = maxPx; }
       }
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      canvas.toBlob(compressed => {
+      canvas.toBlob(b => {
         const reader = new FileReader();
         reader.onload  = () => resolve(reader.result.split(',')[1]);
         reader.onerror = reject;
-        reader.readAsDataURL(compressed);
-      }, 'image/jpeg', 0.60);
+        reader.readAsDataURL(b);
+      }, 'image/jpeg', quality);
     };
     img.onerror = reject;
     img.src = url;
   });
 }
 
-// ─── Upload via hidden iframe form, base64 as plain text field ───
-// Apps Script reads e.parameter.base64Data reliably this way
-function uploadViaIframe(params) {
-  return new Promise((resolve, reject) => {
-    const iframeName = 'beno_iframe_' + Date.now();
-    const iframe = document.createElement('iframe');
-    iframe.name  = iframeName;
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
-
-    const form = document.createElement('form');
-    form.method  = 'POST';
-    form.action  = APPS_SCRIPT_URL;
-    form.target  = iframeName;
-    form.style.display = 'none';
-
-    // All params including base64Data as hidden text fields
-    Object.entries(params).forEach(([k, v]) => {
-      const inp = document.createElement('input');
-      inp.type  = 'hidden';
-      inp.name  = k;
-      inp.value = v;
-      form.appendChild(inp);
-    });
-
-    document.body.appendChild(form);
-
-    const timer = setTimeout(() => {
-      iframe.remove(); form.remove();
-      reject(new Error('Upload timed out. Check your internet connection and try again.'));
-    }, 120000);
-
-    iframe.onload = () => {
-      clearTimeout(timer);
-      try {
-        const doc = iframe.contentDocument || iframe.contentWindow.document;
-        const txt = doc.body ? (doc.body.innerText || doc.body.textContent) : '';
-        if (!txt) { reject(new Error('Empty response from server.')); return; }
-        // Apps Script may wrap in <pre> tags
-        const clean = txt.replace(/<[^>]+>/g, '').trim();
-        resolve(JSON.parse(clean));
-      } catch(e) {
-        reject(new Error('Could not read server response: ' + e.message));
-      } finally {
-        setTimeout(() => { iframe.remove(); form.remove(); }, 500);
-      }
-    };
-
-    iframe.onerror = () => {
-      clearTimeout(timer);
-      iframe.remove(); form.remove();
-      reject(new Error('Network error during upload.'));
-    };
-
-    form.submit();
-  });
-}
-
 async function submitBBMPhoto() {
-  if (!photoBlob) { toast('Please select or capture a photo first.', 'error'); return; }
+  if (!photoBlob) { toast('Please select a photo first.', 'error'); return; }
 
   const btn = document.getElementById('bbm-submit-btn');
   const txt = document.getElementById('bbm-submit-text');
@@ -1292,40 +1296,65 @@ async function submitBBMPhoto() {
   txt.innerHTML = '<div class="spinner"></div> Compressing…';
 
   try {
-    // Compress photo aggressively to keep base64 small
-    const base64 = await compressToBase64(photoBlob);
-    const sizeKB  = Math.round(base64.length * 0.75 / 1024);
-    console.log('Compressed size:', sizeKB, 'KB');
+    // Compress to 480px / 55% quality
+    const base64   = await compressToBase64(photoBlob, 480, 0.55);
+    const totalKB  = Math.round(base64.length * 0.75 / 1024);
+    console.log('Compressed:', totalKB, 'KB, base64 chars:', base64.length);
 
-    txt.innerHTML = '<div class="spinner"></div> Uploading…';
+    // Split into 1500-char chunks safe for URL encoding
+    const CHUNK_SIZE = 1500;
+    const chunks     = [];
+    for (let i = 0; i < base64.length; i += CHUNK_SIZE) {
+      chunks.push(base64.slice(i, i + CHUNK_SIZE));
+    }
 
-    const fname = photoFileName || ('MOV_' + currentMember.ENTRY_ID + '_' + Date.now() + '.jpg');
+    const uploadId = 'u' + Date.now() + Math.random().toString(36).slice(2, 6);
+    const fname    = photoFileName || ('MOV_' + currentMember.ENTRY_ID + '_' + Date.now() + '.jpg');
 
-    const data = await uploadViaIframe({
-      action:       'saveBBMPhoto',
+    // Send chunks one by one
+    for (let i = 0; i < chunks.length; i++) {
+      txt.innerHTML = '<div class="spinner"></div> Uploading ' + (i + 1) + '/' + chunks.length + '…';
+      await jsonp(APPS_SCRIPT_URL, {
+        action:   'uploadChunk',
+        uploadId: uploadId,
+        index:    i,
+        chunk:    chunks[i]
+      }, 30000);
+    }
+
+    // Finalize — Apps Script reassembles and saves to Drive
+    txt.innerHTML = '<div class="spinner"></div> Saving…';
+    const data = await jsonp(APPS_SCRIPT_URL, {
+      action:       'finalizePhoto',
+      uploadId:     uploadId,
       entryId:      currentMember.ENTRY_ID,
       hhId:         currentMember.HH_ID,
       memberName:   fullName(currentMember),
       municipality: currentMember.MUNICIPALITY,
       barangay:     currentMember.BARANGAY,
       fileName:     fname,
-      mimeType:     'image/jpeg',
-      base64Data:   base64,
       encodedBy:    staffName,
       timestamp:    new Date().toISOString()
-    });
+    }, 60000);
 
     if (data.error) throw new Error(data.error);
 
-    // Update table badge immediately
+    // Update live member object
+    if (currentHH) {
+      const live = currentHH.members.find(m => m.ENTRY_ID === currentMember.ENTRY_ID);
+      if (live) live.MOV_DRIVE_URL = data.fileUrl;
+    }
+
+    // Update table badge
     const statusEl = document.getElementById('mov-status-' + currentMember.ENTRY_ID);
     if (statusEl) {
       statusEl.innerHTML = '<a href="' + data.fileUrl + '" target="_blank" style="text-decoration:none">'
         + '<span class="status-badge has-id">&#10003; Uploaded</span></a>';
     }
 
-    toast('Photo uploaded to Google Drive! ✓', 'success');
+    toast('Photo uploaded! ✓', 'success');
     closeBBMModal();
+
   } catch(e) {
     toast('Upload error: ' + e.message, 'error');
   } finally {
