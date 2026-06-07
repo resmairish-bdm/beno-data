@@ -870,14 +870,17 @@ async function doSearch() {
     const members = records.filter(r => r.HH_ID === hhId);
     if (!members.length) { toast('Household not found.', 'error'); return; }
 
-    // 2. Load output sheet data (encoded IDs + CBDO remarks)
+    // 2. Load output sheet data — lookup by Entry IDs (most unique identifier)
     // Try twice in case of first-call Apps Script cold start delay
+    const entryIds = members.map(m => String(m.ENTRY_ID).trim()).join(',');
     let outputMap = {};
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId }, 20000);
+        const out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId, entryIds }, 20000);
+        console.log('[BENO] getOutputData raw response:', JSON.stringify(out));
         if (out && out.records) {
           out.records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
+          console.log('[BENO] outputMap built:', JSON.stringify(outputMap));
           break; // success — stop retrying
         }
       } catch(e) {
@@ -923,7 +926,8 @@ async function doSearch() {
 // ═══════════════════════════════════════════════════════
 async function refreshOutputStatus() {
   if (!currentHH) return;
-  const hhId = currentHH.household.HH_ID;
+  const hhId     = currentHH.household.HH_ID;
+  const entryIds = currentHH.members.map(m => String(m.ENTRY_ID).trim()).join(',');
   const btn  = document.getElementById('refresh-status-btn');
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Refreshing…'; }
   try {
@@ -931,7 +935,8 @@ async function refreshOutputStatus() {
     let out = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId }, 20000);
+        out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId, entryIds }, 20000);
+        console.log('[BENO] refreshOutputStatus response:', JSON.stringify(out));
         if (out && out.records) break;
       } catch(e) {
         if (attempt === 2) throw new Error('Server not responding. Try again in a moment.');
