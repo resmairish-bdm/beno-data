@@ -871,13 +871,20 @@ async function doSearch() {
     if (!members.length) { toast('Household not found.', 'error'); return; }
 
     // 2. Load output sheet data (encoded IDs + CBDO remarks)
+    // Try twice in case of first-call Apps Script cold start delay
     let outputMap = {};
-    try {
-      const out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId });
-      if (out && out.records) {
-        out.records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId }, 20000);
+        if (out && out.records) {
+          out.records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
+          break; // success — stop retrying
+        }
+      } catch(e) {
+        console.warn('getOutputData attempt ' + attempt + ':', e.message);
+        if (attempt === 2) console.error('getOutputData failed both attempts:', e.message);
       }
-    } catch(e) { console.warn('getOutputData:', e.message); }
+    }
 
     // 3. Merge output data into member objects
     const merged = members.map(m => {
@@ -920,8 +927,17 @@ async function refreshOutputStatus() {
   const btn  = document.getElementById('refresh-status-btn');
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Refreshing…'; }
   try {
-    const out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId });
-    if (!out || !out.records) throw new Error('No response from server.');
+    // Retry once for Apps Script cold start
+    let out = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId }, 20000);
+        if (out && out.records) break;
+      } catch(e) {
+        if (attempt === 2) throw new Error('Server not responding. Try again in a moment.');
+      }
+    }
+    if (!out || !out.records) throw new Error('No data returned from server.');
 
     const outputMap = {};
     out.records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
