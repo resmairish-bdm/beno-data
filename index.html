@@ -889,10 +889,7 @@ async function doSearch() {
       },
       members: members.map(m => ({ ...m })) // shallow copy so we can mutate safely
     };
-    renderHousehold(currentHH);
-
-    // Step 3: fetch output sheet data and overlay — done AFTER render so UI appears fast
-    // Even if this fails, the masterlist data is already shown
+    // Step 3: fetch output data FIRST, merge into members, THEN render once
     try {
       const outData = await jsonp(APPS_SCRIPT_URL, {
         action: 'getOutputData',
@@ -900,12 +897,24 @@ async function doSearch() {
         module: currentModule
       });
       if (outData && outData.records && outData.records.length > 0) {
-        applyOutputData(outData.records);
+        // Merge into member objects before rendering so table shows correct data immediately
+        const outputMap = {};
+        outData.records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
+        currentHH.members.forEach(m => {
+          const out = outputMap[String(m.ENTRY_ID).trim()];
+          if (!out) return;
+          if (out.idValue)     m.VALIDATED_PCN_TRN = out.idValue;
+          if (out.idType)      m.ENCODED_ID_TYPE   = out.idType;
+          if (out.cbdoRemarks) m.CBDO_REMARKS      = out.cbdoRemarks;
+          if (out.driveLink)   m.MOV_DRIVE_URL     = out.driveLink;
+        });
       }
     } catch(e) {
-      // Non-fatal — masterlist data already displayed
       console.warn('getOutputData failed:', e.message);
     }
+
+    // Render once with all data merged in
+    renderHousehold(currentHH);
   } catch(e) {
     toast('Error: ' + e.message, 'error');
   } finally {
@@ -921,7 +930,7 @@ async function doSearch() {
 function applyOutputData(records) {
   if (!currentHH || !records || !records.length) return;
 
-  // Build map: entryId → latest record
+  // Build map: entryId → record (Apps Script already returns latest per entryId)
   const outputMap = {};
   records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
 
@@ -929,15 +938,11 @@ function applyOutputData(records) {
     const out = outputMap[String(m.ENTRY_ID).trim()];
     if (!out) return;
 
-    // ── Persist onto member object (survives re-renders) ──
-    if (out.source === 'PHILSYS') {
-      if (out.idValue)                        m.VALIDATED_PCN_TRN = out.idValue;
-      if (out.idType)                         m.ENCODED_ID_TYPE   = out.idType;
-      if ((out.cbdoRemarks || '') !== '')     m.CBDO_REMARKS      = out.cbdoRemarks;
-    }
-    if (out.source === 'BBM') {
-      if (out.driveLink)                      m.MOV_DRIVE_URL     = out.driveLink;
-    }
+    // ── Always persist onto the live member object ──
+    if (out.idValue)     { m.VALIDATED_PCN_TRN = out.idValue; }
+    if (out.idType)      { m.ENCODED_ID_TYPE   = out.idType;  }
+    if (out.cbdoRemarks) { m.CBDO_REMARKS      = out.cbdoRemarks; }
+    if (out.driveLink)   { m.MOV_DRIVE_URL     = out.driveLink; }
 
     // ── Update PhilSys ID cell ──
     const idCell = document.getElementById('philsys-id-' + m.ENTRY_ID);
@@ -948,16 +953,12 @@ function applyOutputData(records) {
 
     // ── Update CBDO Status cell ──
     const cbdoCell = document.getElementById('cbdo-status-' + m.ENTRY_ID);
-    if (cbdoCell && out.source === 'PHILSYS') {
+    if (cbdoCell) {
       const cbdo = (out.cbdoRemarks || '').trim();
       if (cbdo) {
         cbdoCell.innerHTML = '<span class="status-badge has-id" '
           + 'style="background:rgba(56,189,248,0.15);color:var(--c-accent)" '
           + 'title="' + cbdo + '">&#10003; Encoded</span>';
-      }
-      // If no cbdoRemarks but has ID, show encoded ID badge
-      else if (out.idValue && !cbdoCell.querySelector('.has-id')) {
-        cbdoCell.innerHTML = '<span class="status-badge pending">&mdash; Pending</span>';
       }
     }
 
@@ -1201,10 +1202,20 @@ async function submitPhilSys() {
     if (data.error) throw new Error(data.error);
 
     toast('PhilSys ID saved successfully! ✓', 'success');
-    // Update the PhilSys ID cell in the table immediately (no full re-search needed)
+
+    // Update the live member object in currentHH so re-search keeps the value
+    if (currentHH) {
+      const liveMember = currentHH.members.find(m => m.ENTRY_ID === currentMember.ENTRY_ID);
+      if (liveMember) {
+        liveMember.VALIDATED_PCN_TRN = idVal;
+        liveMember.ENCODED_ID_TYPE   = selectedIdType;
+      }
+    }
+
+    // Update the PhilSys ID cell immediately
     const idCell = document.getElementById('philsys-id-' + currentMember.ENTRY_ID);
     if (idCell) {
-      idCell.innerHTML = `<span class="status-badge has-id">✓ ${selectedIdType}: ${truncate(idVal, 18)}</span>`;
+      idCell.innerHTML = '<span class="status-badge has-id">&#10003; ' + selectedIdType + ': ' + truncate(idVal, 18) + '</span>';
     }
     closePhilSysModal();
   } catch(e) {
