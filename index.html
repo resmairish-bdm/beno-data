@@ -615,7 +615,14 @@ tbody tr:hover { background: rgba(56,189,248,0.04); }
       <div class="members-wrap">
         <div class="members-title">
           <h3>Family Composition</h3>
-          <span class="member-count" id="member-count-badge">0 members</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="member-count" id="member-count-badge">0 members</span>
+            <button id="refresh-status-btn" class="btn btn-ghost"
+              onclick="refreshOutputStatus()"
+              style="font-size:11px;padding:4px 10px;display:none">
+              ⟳ Refresh Status
+            </button>
+          </div>
         </div>
         <div class="table-scroll">
           <table>
@@ -916,6 +923,64 @@ async function doSearch() {
 }
 
 // ═══════════════════════════════════════════════════════
+//  REFRESH OUTPUT STATUS (CBDO Remarks + PhilSys ID)
+// ═══════════════════════════════════════════════════════
+async function refreshOutputStatus() {
+  if (!currentHH) return;
+  const hhId = currentHH.household.HH_ID;
+  const btn  = document.getElementById('refresh-status-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Refreshing…'; }
+
+  try {
+    const outData = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId, module: currentModule });
+    if (!outData || !outData.records) throw new Error('No data returned');
+
+    const outputMap = {};
+    outData.records.forEach(r => { outputMap[String(r.entryId)] = r; });
+
+    // Update each member row in the table without full re-render
+    currentHH.members.forEach(m => {
+      const out = outputMap[String(m.ENTRY_ID)];
+      if (!out) return;
+
+      // Update member object
+      if (out.idValue)     m.VALIDATED_PCN_TRN = out.idValue;
+      if (out.idType)      m.ENCODED_ID_TYPE   = out.idType;
+      if (out.cbdoRemarks !== undefined) m.CBDO_REMARKS = out.cbdoRemarks;
+      if (out.driveLink)   m.MOV_DRIVE_URL     = out.driveLink;
+
+      // Update PhilSys ID cell
+      const idCell = document.getElementById('philsys-id-' + m.ENTRY_ID);
+      if (idCell && out.idValue) {
+        idCell.innerHTML = `<span class="status-badge has-id" title="${out.idValue}">&#10003; ${out.idType ? out.idType+': ' : ''}${truncate(out.idValue, 18)}</span>`;
+      }
+
+      // Update CBDO Status cell
+      const cbdoCell = document.getElementById('cbdo-status-' + m.ENTRY_ID);
+      if (cbdoCell) {
+        const cbdo = (out.cbdoRemarks || '').trim();
+        cbdoCell.innerHTML = cbdo
+          ? `<span class="status-badge has-id" style="background:rgba(56,189,248,0.15);color:var(--c-accent)" title="${cbdo}">&#10003; Encoded</span>`
+          : cbdoCell.innerHTML; // keep existing if no remark
+      }
+
+      // Update MOV status cell (BBM)
+      const movCell = document.getElementById('mov-status-' + m.ENTRY_ID);
+      if (movCell && out.driveLink) {
+        movCell.innerHTML = '<a href="' + out.driveLink + '" target="_blank" style="text-decoration:none">'
+          + '<span class="status-badge has-id">&#10003; Uploaded</span></a>';
+      }
+    });
+
+    toast('Status refreshed ✓', 'success');
+  } catch(e) {
+    toast('Could not refresh: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ Refresh Status'; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════
 //  RENDER HOUSEHOLD
 // ═══════════════════════════════════════════════════════
 function renderHousehold(data) {
@@ -948,6 +1013,7 @@ function renderHousehold(data) {
   else                              renderBBMTable(members);
 
   document.getElementById('result-area').classList.remove('hidden');
+  document.getElementById('refresh-status-btn').style.display = 'inline-flex';
 }
 
 function fullName(m) {
