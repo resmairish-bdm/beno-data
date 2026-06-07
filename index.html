@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>BENO — Beneficiary Enrollment & National ID Organizer</title>
+<title>SCORE — Systematic Capturing of Official Registration & Enrollment</title>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 /* ═══════════════════════════════════════════════
@@ -550,10 +550,9 @@ tbody tr:hover { background: rgba(56,189,248,0.04); }
 
 <!-- ═══════ HEADER ═══════ -->
 <header>
-  <div class="logo">BNO</div>
+  <div class="logo" style="width:auto;padding:0 10px;font-size:12px;letter-spacing:2px;">SCORE</div>
   <div class="header-text">
-    <h1>BENO</h1>
-    <p>Beneficiary Enrollment & National ID Organizer</p>
+    <p>Systematic Capturing of Official Registration & Enrollment</p>
   </div>
   <div class="staff-badge" onclick="openStaffModal()">
     <div class="staff-avatar" id="staff-avatar">?</div>
@@ -877,10 +876,10 @@ async function doSearch() {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId, entryIds }, 20000);
-        console.log('[BENO] getOutputData raw response:', JSON.stringify(out));
+        console.log('[SCORE] getOutputData raw response:', JSON.stringify(out));
         if (out && out.records) {
           out.records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
-          console.log('[BENO] outputMap built:', JSON.stringify(outputMap));
+          console.log('[SCORE] outputMap built:', JSON.stringify(outputMap));
           break; // success — stop retrying
         }
       } catch(e) {
@@ -936,7 +935,7 @@ async function refreshOutputStatus() {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         out = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId, entryIds }, 20000);
-        console.log('[BENO] refreshOutputStatus response:', JSON.stringify(out));
+        console.log('[SCORE] refreshOutputStatus response:', JSON.stringify(out));
         if (out && out.records) break;
       } catch(e) {
         if (attempt === 2) throw new Error('Server not responding. Try again in a moment.');
