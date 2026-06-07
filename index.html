@@ -615,7 +615,14 @@ tbody tr:hover { background: rgba(56,189,248,0.04); }
       <div class="members-wrap">
         <div class="members-title">
           <h3>Family Composition</h3>
-          <span class="member-count" id="member-count-badge">0 members</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="member-count" id="member-count-badge">0 members</span>
+            <button id="refresh-status-btn" class="btn btn-ghost"
+              onclick="refreshOutputStatus()"
+              style="font-size:11px;padding:4px 10px;display:none">
+              ⟳ Refresh Status
+            </button>
+          </div>
         </div>
         <div class="table-scroll">
           <table>
@@ -692,38 +699,19 @@ tbody tr:hover { background: rgba(56,189,248,0.04); }
     </div>
     <div class="encode-body">
 
-      <!-- Mode toggle: upload vs camera -->
-      <div class="photo-actions">
-        <button class="btn btn-ghost" id="btn-upload-mode" onclick="setPhotoMode('upload')" style="font-size:13px">
-          📁 Upload File
+      <!-- Native file inputs — triggered explicitly via onclick -->
+      <input type="file" id="photo-camera-input" accept="image/*" capture="environment"
+        onchange="handleFileSelect(event)" style="display:none"/>
+      <input type="file" id="photo-file-input" accept="image/*"
+        onchange="handleFileSelect(event)" style="display:none"/>
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <button class="btn btn-ghost" style="flex:1;font-size:13px"
+          onclick="document.getElementById('photo-camera-input').click()">
+          📷 Take Photo
         </button>
-        <button class="btn btn-ghost" id="btn-camera-mode" onclick="setPhotoMode('camera')" style="font-size:13px">
-          📷 Use Camera
-        </button>
-      </div>
-
-      <!-- Upload mode -->
-      <div id="upload-mode-ui">
-        <div class="photo-drop" id="photo-drop-zone"
-          ondragover="event.preventDefault(); this.classList.add('drag-over')"
-          ondragleave="this.classList.remove('drag-over')"
-          ondrop="handleDrop(event)">
-          <input type="file" id="photo-file-input" accept="image/*,application/pdf"
-            onchange="handleFileSelect(event)"/>
-          <div class="photo-drop-icon">🖼️</div>
-          <p>Tap to choose a file or drag & drop</p>
-          <small>JPG, PNG, PDF accepted</small>
-        </div>
-      </div>
-
-      <!-- Camera mode -->
-      <div id="camera-mode-ui" class="hidden">
-        <div class="camera-wrap" id="camera-wrap">
-          <video id="camera-video" autoplay playsinline muted></video>
-          <canvas id="camera-canvas"></canvas>
-        </div>
-        <button class="btn btn-bbm" onclick="capturePhoto()" style="width:100%;margin-bottom:10px">
-          📸 Capture Photo
+        <button class="btn btn-ghost" style="flex:1;font-size:13px"
+          onclick="document.getElementById('photo-file-input').click()">
+          🖼️ Choose File
         </button>
       </div>
 
@@ -754,7 +742,7 @@ tbody tr:hover { background: rgba(56,189,248,0.04); }
 //  ⚙️  CONFIGURATION
 // ═══════════════════════════════════════════════════════
 // Apps Script URL — used ONLY for write actions (savePhilSys, saveBBMPhoto)
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzexLFAoWycwyEkyDxqE9xrsve-975ZbvI2fSlUNmuoggxd6BUTNZR6D08Y2Km1_dMS/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHqx01uzO2qWFAXB3Bvqy8zZba5yygsoWqUHjTcZKXtPCrWZeNzIH-n3nr9hZpK_Op/exec';
 
 // GitHub raw base URL — update YOUR_USERNAME and YOUR_REPO after uploading
 // Example: 'https://raw.githubusercontent.com/jdelacruz/beno-data/main'
@@ -888,32 +876,8 @@ async function doSearch() {
       return;
     }
 
-    // Step 2: fetch existing output data from Apps Script (encoded IDs + CBDO Remarks)
-    let outputMap = {};
-    try {
-      const outData = await jsonp(APPS_SCRIPT_URL, { action: 'getOutputData', hhId, module: currentModule });
-      if (outData && outData.records) {
-        outData.records.forEach(r => { outputMap[String(r.entryId)] = r; });
-      }
-    } catch(e) { /* non-fatal — output sheet data is supplementary */ }
-
-    // Step 3: merge output data into members
-    const mergedMembers = members.map(m => {
-      const out = outputMap[String(m.ENTRY_ID)];
-      if (!out) return m;
-      return {
-        ...m,
-        // Overlay encoded PhilSys ID if present in output sheet
-        VALIDATED_PCN_TRN: out.idValue || m.VALIDATED_PCN_TRN || '',
-        ENCODED_ID_TYPE:   out.idType  || '',
-        // CBDO Remarks from output sheet
-        CBDO_REMARKS:      out.cbdoRemarks || '',
-        // MOV photo link if present
-        MOV_DRIVE_URL:     out.driveLink  || '',
-      };
-    });
-
-    const first = mergedMembers[0];
+    // Step 2: build the household first from masterlist
+    const first = members[0];
     currentHH = {
       found: true,
       household: {
@@ -923,14 +887,113 @@ async function doSearch() {
         PROVINCE:     first.PROVINCE,
         REGION:       first.REGION,
       },
-      members: mergedMembers
+      members: members.map(m => ({ ...m })) // shallow copy so we can mutate safely
     };
+    // Step 3: fetch output data FIRST, merge into members, THEN render once
+    try {
+      const outData = await jsonp(APPS_SCRIPT_URL, {
+        action: 'getOutputData',
+        hhId,
+        module: currentModule
+      });
+      if (outData && outData.records && outData.records.length > 0) {
+        // Merge into member objects before rendering so table shows correct data immediately
+        const outputMap = {};
+        outData.records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
+        currentHH.members.forEach(m => {
+          const out = outputMap[String(m.ENTRY_ID).trim()];
+          if (!out) return;
+          if (out.idValue)     m.VALIDATED_PCN_TRN = out.idValue;
+          if (out.idType)      m.ENCODED_ID_TYPE   = out.idType;
+          if (out.cbdoRemarks) m.CBDO_REMARKS      = out.cbdoRemarks;
+          if (out.driveLink)   m.MOV_DRIVE_URL     = out.driveLink;
+        });
+      }
+    } catch(e) {
+      console.error('getOutputData error:', e.message);
+      toast('Note: Could not load output sheet data — ' + e.message, 'error');
+    }
+
+    // Render once with all data merged in
     renderHousehold(currentHH);
   } catch(e) {
     toast('Error: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
     txt.textContent = 'Search';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  APPLY OUTPUT DATA — shared by doSearch + refreshOutputStatus
+//  Updates member objects AND table cells from output sheet records
+// ═══════════════════════════════════════════════════════
+function applyOutputData(records) {
+  if (!currentHH || !records || !records.length) return;
+
+  // Build map: entryId → record (Apps Script already returns latest per entryId)
+  const outputMap = {};
+  records.forEach(r => { outputMap[String(r.entryId).trim()] = r; });
+
+  currentHH.members.forEach(m => {
+    const out = outputMap[String(m.ENTRY_ID).trim()];
+    if (!out) return;
+
+    // ── Always persist onto the live member object ──
+    if (out.idValue)     { m.VALIDATED_PCN_TRN = out.idValue; }
+    if (out.idType)      { m.ENCODED_ID_TYPE   = out.idType;  }
+    if (out.cbdoRemarks) { m.CBDO_REMARKS      = out.cbdoRemarks; }
+    if (out.driveLink)   { m.MOV_DRIVE_URL     = out.driveLink; }
+
+    // ── Update PhilSys ID cell ──
+    const idCell = document.getElementById('philsys-id-' + m.ENTRY_ID);
+    if (idCell && out.idValue) {
+      const label = (out.idType ? out.idType + ': ' : '') + truncate(out.idValue, 18);
+      idCell.innerHTML = '<span class="status-badge has-id" title="' + out.idValue + '">&#10003; ' + label + '</span>';
+    }
+
+    // ── Update CBDO Status cell ──
+    const cbdoCell = document.getElementById('cbdo-status-' + m.ENTRY_ID);
+    if (cbdoCell) {
+      const cbdo = (out.cbdoRemarks || '').trim();
+      if (cbdo) {
+        cbdoCell.innerHTML = '<span class="status-badge has-id" '
+          + 'style="background:rgba(56,189,248,0.15);color:var(--c-accent)" '
+          + 'title="' + cbdo + '">&#10003; Encoded</span>';
+      }
+    }
+
+    // ── Update BBM MOV status cell ──
+    const movCell = document.getElementById('mov-status-' + m.ENTRY_ID);
+    if (movCell && out.driveLink) {
+      movCell.innerHTML = '<a href="' + out.driveLink + '" target="_blank" style="text-decoration:none">'
+        + '<span class="status-badge has-id">&#10003; Uploaded</span></a>';
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  REFRESH OUTPUT STATUS — called by ⟳ Refresh Status button
+// ═══════════════════════════════════════════════════════
+async function refreshOutputStatus() {
+  if (!currentHH) return;
+  const hhId = currentHH.household.HH_ID;
+  const btn  = document.getElementById('refresh-status-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Refreshing…'; }
+
+  try {
+    const outData = await jsonp(APPS_SCRIPT_URL, {
+      action: 'getOutputData',
+      hhId,
+      module: currentModule
+    });
+    if (!outData || !outData.records) throw new Error('No data returned from server.');
+    applyOutputData(outData.records);
+    toast('Status refreshed ✓', 'success');
+  } catch(e) {
+    toast('Could not refresh: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ Refresh Status'; }
   }
 }
 
@@ -967,6 +1030,7 @@ function renderHousehold(data) {
   else                              renderBBMTable(members);
 
   document.getElementById('result-area').classList.remove('hidden');
+  document.getElementById('refresh-status-btn').style.display = 'inline-flex';
 }
 
 function fullName(m) {
@@ -1139,10 +1203,20 @@ async function submitPhilSys() {
     if (data.error) throw new Error(data.error);
 
     toast('PhilSys ID saved successfully! ✓', 'success');
-    // Update the PhilSys ID cell in the table immediately (no full re-search needed)
+
+    // Update the live member object in currentHH so re-search keeps the value
+    if (currentHH) {
+      const liveMember = currentHH.members.find(m => m.ENTRY_ID === currentMember.ENTRY_ID);
+      if (liveMember) {
+        liveMember.VALIDATED_PCN_TRN = idVal;
+        liveMember.ENCODED_ID_TYPE   = selectedIdType;
+      }
+    }
+
+    // Update the PhilSys ID cell immediately
     const idCell = document.getElementById('philsys-id-' + currentMember.ENTRY_ID);
     if (idCell) {
-      idCell.innerHTML = `<span class="status-badge has-id">✓ ${selectedIdType}: ${truncate(idVal, 18)}</span>`;
+      idCell.innerHTML = '<span class="status-badge has-id">&#10003; ' + selectedIdType + ': ' + truncate(idVal, 18) + '</span>';
     }
     closePhilSysModal();
   } catch(e) {
@@ -1162,7 +1236,7 @@ function openBBMModal(member) {
   document.getElementById('bbm-member-label').textContent = fullName(member);
   document.getElementById('photo-preview').style.display = 'none';
   document.getElementById('photo-file-input').value = '';
-  setPhotoMode('upload');
+  document.getElementById('photo-camera-input').value = '';
   document.getElementById('overlay-bbm').classList.remove('hidden');
 }
 
@@ -1171,58 +1245,11 @@ function closeBBMModal() {
   document.getElementById('overlay-bbm').classList.add('hidden');
 }
 
-function setPhotoMode(mode) {
-  const uploadUI = document.getElementById('upload-mode-ui');
-  const cameraUI = document.getElementById('camera-mode-ui');
-  const btnUp    = document.getElementById('btn-upload-mode');
-  const btnCam   = document.getElementById('btn-camera-mode');
-
-  if (mode === 'upload') {
-    uploadUI.classList.remove('hidden');
-    cameraUI.classList.add('hidden');
-    btnUp.style.borderColor = 'var(--c-accent)';
-    btnCam.style.borderColor = '';
-    stopCamera();
-  } else {
-    uploadUI.classList.add('hidden');
-    cameraUI.classList.remove('hidden');
-    btnUp.style.borderColor = '';
-    btnCam.style.borderColor = 'var(--c-bbm-light)';
-    startCamera();
-  }
-}
-
-async function startCamera() {
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    document.getElementById('camera-video').srcObject = cameraStream;
-  } catch(e) {
-    toast('Camera access denied or unavailable.', 'error');
-    setPhotoMode('upload');
-  }
-}
-
+// Camera removed — native file inputs used instead
 function stopCamera() {
-  if (cameraStream) {
-    cameraStream.getTracks().forEach(t => t.stop());
-    cameraStream = null;
-  }
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
 }
 
-function capturePhoto() {
-  const video  = document.getElementById('camera-video');
-  const canvas = document.getElementById('camera-canvas');
-  canvas.width  = video.videoWidth  || 640;
-  canvas.height = video.videoHeight || 480;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  canvas.toBlob(blob => {
-    photoBlob     = blob;
-    photoFileName = `MOV_${currentMember.ENTRY_ID}_${Date.now()}.jpg`;
-    showPreview(blob, photoFileName);
-  }, 'image/jpeg', 0.85);
-  stopCamera();
-  setPhotoMode('upload');
-}
 
 function handleFileSelect(event) {
   const file = event.target.files[0];
@@ -1231,7 +1258,6 @@ function handleFileSelect(event) {
 
 function handleDrop(event) {
   event.preventDefault();
-  document.getElementById('photo-drop-zone').classList.remove('drag-over');
   const file = event.dataTransfer.files[0];
   if (file) processFile(file);
 }
@@ -1263,15 +1289,15 @@ function clearPhoto() {
   document.getElementById('photo-file-input').value = '';
 }
 
-// ─── Compress any image blob to a small JPEG via canvas ───
-// Resizes to max 1024px on the longest side, quality 0.7 → typically ~80-150KB
-function compressImage(blob) {
+// ─── Compress image to small JPEG base64 string ───
+// Max 640px, quality 0.6 → typically 30-70KB base64
+function compressToBase64(blob) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const MAX = 1024;
+      const MAX = 640;
       let w = img.width, h = img.height;
       if (w > MAX || h > MAX) {
         if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
@@ -1285,10 +1311,68 @@ function compressImage(blob) {
         reader.onload  = () => resolve(reader.result.split(',')[1]);
         reader.onerror = reject;
         reader.readAsDataURL(compressed);
-      }, 'image/jpeg', 0.72);
+      }, 'image/jpeg', 0.60);
     };
     img.onerror = reject;
     img.src = url;
+  });
+}
+
+// ─── Upload via hidden iframe form, base64 as plain text field ───
+// Apps Script reads e.parameter.base64Data reliably this way
+function uploadViaIframe(params) {
+  return new Promise((resolve, reject) => {
+    const iframeName = 'beno_iframe_' + Date.now();
+    const iframe = document.createElement('iframe');
+    iframe.name  = iframeName;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.method  = 'POST';
+    form.action  = APPS_SCRIPT_URL;
+    form.target  = iframeName;
+    form.style.display = 'none';
+
+    // All params including base64Data as hidden text fields
+    Object.entries(params).forEach(([k, v]) => {
+      const inp = document.createElement('input');
+      inp.type  = 'hidden';
+      inp.name  = k;
+      inp.value = v;
+      form.appendChild(inp);
+    });
+
+    document.body.appendChild(form);
+
+    const timer = setTimeout(() => {
+      iframe.remove(); form.remove();
+      reject(new Error('Upload timed out. Check your internet connection and try again.'));
+    }, 120000);
+
+    iframe.onload = () => {
+      clearTimeout(timer);
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        const txt = doc.body ? (doc.body.innerText || doc.body.textContent) : '';
+        if (!txt) { reject(new Error('Empty response from server.')); return; }
+        // Apps Script may wrap in <pre> tags
+        const clean = txt.replace(/<[^>]+>/g, '').trim();
+        resolve(JSON.parse(clean));
+      } catch(e) {
+        reject(new Error('Could not read server response: ' + e.message));
+      } finally {
+        setTimeout(() => { iframe.remove(); form.remove(); }, 500);
+      }
+    };
+
+    iframe.onerror = () => {
+      clearTimeout(timer);
+      iframe.remove(); form.remove();
+      reject(new Error('Network error during upload.'));
+    };
+
+    form.submit();
   });
 }
 
@@ -1301,29 +1385,32 @@ async function submitBBMPhoto() {
   txt.innerHTML = '<div class="spinner"></div> Compressing…';
 
   try {
-    // Compress image to ~100-150KB JPEG so it fits in a JSONP GET request
-    const base64 = await compressImage(photoBlob);
+    // Compress photo aggressively to keep base64 small
+    const base64 = await compressToBase64(photoBlob);
+    const sizeKB  = Math.round(base64.length * 0.75 / 1024);
+    console.log('Compressed size:', sizeKB, 'KB');
 
     txt.innerHTML = '<div class="spinner"></div> Uploading…';
 
-    // Send via JSONP (GET) — works cross-origin with Apps Script, no CORS issues
-    const data = await jsonp(APPS_SCRIPT_URL, {
+    const fname = photoFileName || ('MOV_' + currentMember.ENTRY_ID + '_' + Date.now() + '.jpg');
+
+    const data = await uploadViaIframe({
       action:       'saveBBMPhoto',
       entryId:      currentMember.ENTRY_ID,
       hhId:         currentMember.HH_ID,
       memberName:   fullName(currentMember),
       municipality: currentMember.MUNICIPALITY,
       barangay:     currentMember.BARANGAY,
-      fileName:     photoFileName || ('MOV_' + currentMember.ENTRY_ID + '_' + Date.now() + '.jpg'),
+      fileName:     fname,
       mimeType:     'image/jpeg',
       base64Data:   base64,
       encodedBy:    staffName,
       timestamp:    new Date().toISOString()
-    }, 60000); // 60s timeout for upload
+    });
 
     if (data.error) throw new Error(data.error);
 
-    // Update MOV status badge in the table immediately
+    // Update table badge immediately
     const statusEl = document.getElementById('mov-status-' + currentMember.ENTRY_ID);
     if (statusEl) {
       statusEl.innerHTML = '<a href="' + data.fileUrl + '" target="_blank" style="text-decoration:none">'
@@ -1339,7 +1426,6 @@ async function submitBBMPhoto() {
     txt.textContent = 'Upload & Save';
   }
 }
-
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
