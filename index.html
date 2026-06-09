@@ -1333,12 +1333,12 @@ async function submitBBMPhoto() {
 
   try {
     // Compress to 800px / 82% quality — sharper images, still efficient
-    const base64   = await compressToBase64(photoBlob, 1200, 0.82);
+    const base64   = await compressToBase64(photoBlob, 1200, 0.75);
     const totalKB  = Math.round(base64.length * 0.75 / 1024);
     console.log('Compressed:', totalKB, 'KB, base64 chars:', base64.length);
 
     // Split into 6000-char chunks (4x fewer requests = faster upload)
-    const CHUNK_SIZE = 900;
+    const CHUNK_SIZE = 1500;
     const chunks     = [];
     for (let i = 0; i < base64.length; i += CHUNK_SIZE) {
       chunks.push(base64.slice(i, i + CHUNK_SIZE));
