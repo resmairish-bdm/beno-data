@@ -456,7 +456,7 @@ tbody tr:hover { background: rgba(56,189,248,0.04); }
   margin-top: 12px;
   display: none;
 }
-.photo-preview img { width: 100%; height: 180px; object-fit: cover; display: block; }
+.photo-preview img { width: 100%; height: 240px; object-fit: contain; display: block; background: #000; }
 .photo-preview-label {
   padding: 8px 12px;
   background: var(--c-panel);
@@ -1277,11 +1277,16 @@ function clearPhoto() {
   document.getElementById('photo-file-input').value = '';
 }
 
-// ─── Compress image and upload via chunked JSONP ───
-// Splits base64 into ~1500-char chunks sent one at a time via JSONP GET
-// Apps Script reassembles using CacheService, then saves to Drive
+// ═══════════════════════════════════════════════════════
+//  BBM PHOTO UPLOAD — Cloudinary (direct) + Apps Script (log only)
+// ═══════════════════════════════════════════════════════
 
-function compressToBase64(blob, maxPx, quality) {
+const CLOUDINARY_CLOUD  = 'dtfwz3ymo';
+const CLOUDINARY_PRESET = 'score_app_preset';
+const CLOUDINARY_URL    = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`;
+
+// ─── Compress image blob to a resized/quality-reduced Blob ───
+function compressBlob(blob, maxPx, quality) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
@@ -1294,17 +1299,33 @@ function compressToBase64(blob, maxPx, quality) {
       }
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      canvas.toBlob(b => {
-        const reader = new FileReader();
-        reader.onload  = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(b);
-      }, 'image/jpeg', quality);
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('Canvas toBlob failed')),
+        'image/jpeg', quality);
     };
     img.onerror = reject;
     img.src = url;
   });
+}
+
+// ─── Upload compressed blob directly to Cloudinary ───
+async function uploadToCloudinary(blob, publicId) {
+  const fd = new FormData();
+  fd.append('file',         blob, publicId + '.jpg');
+  fd.append('upload_preset', CLOUDINARY_PRESET);
+  fd.append('public_id',    publicId);
+  fd.append('folder',       'SCORE/MOV');
+
+  const resp = await fetch(CLOUDINARY_URL, { method: 'POST', body: fd });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Cloudinary error ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data.secure_url; // permanent HTTPS URL
 }
 
 async function submitBBMPhoto() {
@@ -1316,59 +1337,43 @@ async function submitBBMPhoto() {
   txt.innerHTML = '<div class="spinner"></div> Compressing…';
 
   try {
-    // Compress to 480px / 55% quality
-    const base64   = await compressToBase64(photoBlob, 480, 0.55);
-    const totalKB  = Math.round(base64.length * 0.75 / 1024);
-    console.log('Compressed:', totalKB, 'KB, base64 chars:', base64.length);
+    // Step 1 — Compress to 900px / 85% quality
+    const compressed = await compressBlob(photoBlob, 900, 0.85);
+    const sizeKB = Math.round(compressed.size / 1024);
+    console.log('[SCORE] Compressed:', sizeKB, 'KB');
 
-    // Split into 1500-char chunks safe for URL encoding
-    const CHUNK_SIZE = 1500;
-    const chunks     = [];
-    for (let i = 0; i < base64.length; i += CHUNK_SIZE) {
-      chunks.push(base64.slice(i, i + CHUNK_SIZE));
-    }
+    // Step 2 — Upload directly to Cloudinary (single POST, no chunking)
+    txt.innerHTML = '<div class="spinner"></div> Uploading photo…';
+    const publicId  = `MOV_${currentMember.ENTRY_ID}_${Date.now()}`;
+    const photoUrl  = await uploadToCloudinary(compressed, publicId);
+    console.log('[SCORE] Cloudinary URL:', photoUrl);
 
-    const uploadId = 'u' + Date.now() + Math.random().toString(36).slice(2, 6);
-    const fname    = photoFileName || ('MOV_' + currentMember.ENTRY_ID + '_' + Date.now() + '.jpg');
-
-    // Send chunks one by one
-    for (let i = 0; i < chunks.length; i++) {
-      txt.innerHTML = '<div class="spinner"></div> Uploading ' + (i + 1) + '/' + chunks.length + '…';
-      await jsonp(APPS_SCRIPT_URL, {
-        action:   'uploadChunk',
-        uploadId: uploadId,
-        index:    i,
-        chunk:    chunks[i]
-      }, 30000);
-    }
-
-    // Finalize — Apps Script reassembles and saves to Drive
-    txt.innerHTML = '<div class="spinner"></div> Saving…';
+    // Step 3 — Log URL + metadata to Google Sheet via Apps Script
+    txt.innerHTML = '<div class="spinner"></div> Saving to sheet…';
     const data = await jsonp(APPS_SCRIPT_URL, {
-      action:       'finalizePhoto',
-      uploadId:     uploadId,
+      action:       'logPhoto',
       entryId:      currentMember.ENTRY_ID,
       hhId:         currentMember.HH_ID,
       memberName:   fullName(currentMember),
       municipality: currentMember.MUNICIPALITY,
       barangay:     currentMember.BARANGAY,
-      fileName:     fname,
+      photoUrl:     photoUrl,
       encodedBy:    staffName,
       timestamp:    new Date().toISOString()
-    }, 60000);
+    }, 30000);
 
-    if (data.error) throw new Error(data.error);
+    if (data && data.error) throw new Error(data.error);
 
-    // Update live member object
+    // Step 4 — Update live member object
     if (currentHH) {
       const live = currentHH.members.find(m => m.ENTRY_ID === currentMember.ENTRY_ID);
-      if (live) live.MOV_DRIVE_URL = data.fileUrl;
+      if (live) live.MOV_DRIVE_URL = photoUrl;
     }
 
-    // Update table badge
+    // Step 5 — Update table badge with clickable link
     const statusEl = document.getElementById('mov-status-' + currentMember.ENTRY_ID);
     if (statusEl) {
-      statusEl.innerHTML = '<a href="' + data.fileUrl + '" target="_blank" style="text-decoration:none">'
+      statusEl.innerHTML = '<a href="' + photoUrl + '" target="_blank" style="text-decoration:none">'
         + '<span class="status-badge has-id">&#10003; Uploaded</span></a>';
     }
 
@@ -1382,15 +1387,6 @@ async function submitBBMPhoto() {
     txt.textContent = 'Upload & Save';
   }
 }
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
 // ═══════════════════════════════════════════════════════
 //  JSONP HELPER — bypasses CORS for Apps Script
 // ═══════════════════════════════════════════════════════
